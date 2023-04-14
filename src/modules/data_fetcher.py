@@ -9,9 +9,33 @@ from kucoin.client import Market
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
+def build_close_df(symbols: set, drop_na: bool = False) -> pd.DataFrame:
+    df = pd.DataFrame()
+    for symbol in symbols:
+        # print(symbol)
+        currency_df = download_historical_data(symbol, "1day")
+        currency_df.index = currency_df.index.map(
+            lambda x: datetime(x.year, x.month, x.day)
+        )
+        df = pd.concat(
+            [df, currency_df[[f"Close"]].rename(columns={"Close": f"{symbol}_Close"})],
+            axis=1,
+        )
+    return df if not drop_na else df.dropna()
+
+
+def get_list_of_symbols() -> list[str]:
+    """Get a list of all symbols in kucoin
+    Returns:
+        list[str]: The symbol's list.
+    """
+    service = CryptoService()
+    return service.get_list_of_symbols()
+
+
 def download_historical_data(symbol: str, timeframe: str = "1hour") -> pd.DataFrame:
     service = CryptoService()
-    service.refresh_list_of_symbols() # Uncomment for the first usage
+    service.refresh_list_of_symbols()  # Uncomment for the first usage
     df = service.get_history_of_symbol(f"{symbol}", timeframe)
     df["Date"] = df["Timestamp"].apply(datetime.fromtimestamp)
     df.set_index("Date", inplace=True)
@@ -31,7 +55,7 @@ def download_historical_data(symbol: str, timeframe: str = "1hour") -> pd.DataFr
         "1day": "1D",
     }
 
-    return df#.asfreq(timeframe_to_freq[timeframe])#.ffill()
+    return df  # .asfreq(timeframe_to_freq[timeframe])#.ffill()
 
 
 class CryptoService:
