@@ -9,6 +9,20 @@ from scipy.optimize import minimize
 
 
 class ABCPortfolio(ABC):
+    def __init__(self, returns: pd.DataFrame, trading_days: int = 365) -> None:
+        """Construct a new 'ABCPortfolio' object. Generic for all portfolio optimization models : `MonteCarloPortfolio`, `ConvexPortfolio`.
+
+        Args:
+        -----
+            returns (pd.DataFrame): The returns of the assets in the portfolio.
+            trading_days (int, optional): The number of trading days in a year, 365 for cryptos, 252 for stocks. Defaults to 365.
+        """
+        self._returns = returns
+        self._returns_mean = self._returns.mean()
+        self._returns_cov = self._returns.cov().values
+        self._trading_days = trading_days
+        self._already_optimized = False
+
     @abstractmethod
     def fit(self):
         pass
@@ -20,11 +34,12 @@ class ABCPortfolio(ABC):
     @staticmethod
     def _plot_allocation(
         weights: npt.NDArray | Iterable,
-        assets: npt.NDArray | list[str] | tuple[str],
+        assets: npt.NDArray | list[str] | tuple[str] | pd.Index,
     ) -> None:
         """Plot the allocation of the portfolio in  a pie chart.
 
         Args:
+        -----
             weights (npt.NDArray | Iterable): _description_
             assets (npt.NDArray | list[str] | tuple[str]): _description_
         """
@@ -32,14 +47,153 @@ class ABCPortfolio(ABC):
         res.sort(key=lambda x: x[1], reverse=True)
         res = np.array(res)
         plt.title("Asset allocation")
-        plt.pie(res[:, -1], labels=res[:, 0], autopct="%1.1f%%")
+        plt.pie(res[:, -1], labels=res[:, 0].tolist(), autopct="%1.1f%%")
         plt.show()
+
+    def _compute_metrics(
+        self,
+        weights: npt.NDArray,
+    ) -> dict[str, float | int]:
+        """Given an array of weights, compute the Sharpe ratio, the risk and the return of the portfolio. This method in used it the optimization functions of the portfolio optimization models.
+
+        Args:
+        -----
+            weights (npt.NDArray): The weights of the assets in the portfolio.
+
+        Returns:
+        -----
+            dict[str, float | int]: The Sharpe ratio, the risk and the return of the portfolio. The keys are : "sharpe", "risk" and "return".
+        """
+        ret = np.sum(self._returns_mean * weights * self._trading_days)
+        vol = float(
+            np.sqrt(weights.T @ self._returns_cov * self._trading_days @ weights)
+        )
+        sr = ret / vol
+        return {"sharpe": sr, "risk": vol, "return": ret}
+
+
+class RiskParityPortfolio(ABCPortfolio):
+    def __compute_objective_metrics(self, weights: npt.NDArray, args: list) -> float:
+        """The objective function to optimize. It is used in the `fit` method.
+
+        Args:
+        -----
+            weights (npt.NDArray): The weights of the assets in the portfolio.
+            args (list): The arguments of the objective function.
+
+        Returns:
+        -----
+            float: The value of the objective function.
+        """
+
+        # We convert the weights to a matrix
+        weights_matrix = np.matrix(weights)
+        assets_risk_budget = np.matrix(args[0])
+
+        # We calculate the risk of the weights distribution
+        portfolio_risk = self._compute_metrics(weights=weights)["risk"]
+
+        # We calculate the contribution of each asset to the risk of the weights
+        # distribution
+        assets_risk_contribution = (
+            np.multiply(
+                weights_matrix.T,
+                self._returns_cov * self._trading_days * weights_matrix.T,
+            )
+            / portfolio_risk
+        )
+
+        # We calculate the desired contribution of each asset to the risk of the weights distribution
+        assets_risk_target = portfolio_risk * assets_risk_budget
+
+        # Error between the desired contribution and the calculated contribution of each asset
+        return np.sum(np.square(assets_risk_contribution - assets_risk_target.T))  # MSE
+
+    def fit(
+        self,
+    ) -> None:
+        """Optimize the portfolio for an equity risk parity among assets. It uses an optimizer from `scipy.optimize` module. This method returns nothing."""
+
+        cons = (
+            {
+                "type": "eq",
+                "fun": lambda weights: np.sum(weights) - 1,
+            },  # return 0 if sum of the weights is 1
+            {"type": "ineq", "fun": lambda x: x},  # Long only
+        )
+
+        bounds = tuple([(0.0, 1.0) for _ in range(len(self._returns.columns))])
+        init_guess = [
+            1 / len(self._returns.columns) for _ in range(len(self._returns.columns))
+        ]
+
+        assets_risk_budget = [
+            1 / len(self._returns.columns) for _ in range(len(self._returns.columns))
+        ]
+
+        opt_results = minimize(
+            fun=self.__compute_objective_metrics,
+            x0=init_guess,
+            args=[assets_risk_budget],
+            method="SLSQP",
+            bounds=bounds,
+            constraints=cons,
+            tol=1e-10,
+        )
+
+        self._already_optimized = True
+        self.__optimized_weights = opt_results.x
+        self.__optimized_metrics = self._compute_metrics(self.__optimized_weights)
+
+    def get_allocation(self) -> pd.DataFrame:
+        """Plot the allocation of the portfolio and return a DataFrame with the allocation of each asset. This function can't be called before the fit method.
+
+        Returns:
+        --------
+            pd.DataFrame: The allocation of each asset in the portfolio, columns are the assets and rows are the weights.
+        """
+        assert (
+            self._already_optimized
+        ), "You must fit the model before getting the allocation."
+
+        print(f"{'  Results  ':-^40}")
+
+        print(
+            f"- Annualized Sharpe ratio: {self.__optimized_metrics.get('sharpe',0.0):.2f}\n- Annualized risk (volatility): {100*self.__optimized_metrics.get('risk',1.0):.2f} %\n- Annualized expected return: {100*self.__optimized_metrics.get('return',0.0):.2f} %"
+        )
+        ConvexPortfolio._plot_allocation(
+            self.__optimized_weights, self._returns.columns
+        )
+        return pd.DataFrame(
+            {
+                p: [w]
+                for p, w in zip(
+                    self._returns.columns,
+                    self.__optimized_weights,
+                )
+            }
+        )
 
 
 class ConvexPortfolio(ABCPortfolio):
-    def __init__(self, returns: pd.DataFrame) -> None:
-        self.__returns = returns
-        self.__already_optimized = False
+    def __compute_objective_metrics(
+        self, weights: npt.NDArray, args: list[str]
+    ) -> float:
+        """The objective function to optimize. It is used in the `fit` method.
+
+        Args:
+        -----
+            weights (npt.NDArray): The weights of the assets in the portfolio.
+            args (list[str]): The arguments of the objective function.
+
+        Returns:
+        -----
+            float: The value of the objective function.
+        """
+        metric: Literal["sharpe", "risk", "return"] = args[0]  # type: ignore
+        way: Literal["min", "max"] = args[1]  # type: ignore
+        metrics = self._compute_metrics(weights)
+        return -metrics.get(metric, 0.0) if way == "max" else metrics.get(metric, 0.0)
 
     def fit(
         self,
@@ -47,7 +201,6 @@ class ConvexPortfolio(ABCPortfolio):
         way: Literal["min", "max"] = "max",
         max_asset_weight: float = 0.3,
         min_asset_weight: float = 0.0,
-        trading_days: int = 365,
     ) -> None:
         """Optimize the portfolio using the Sharpe ratio, risk or return as a metric and a maximization or a minimization this metric. It uses an optimizer from `scipy.optimize` module. This method returns nothing.
 
@@ -57,8 +210,6 @@ class ConvexPortfolio(ABCPortfolio):
             way (Literal[&quot;min&quot;, &quot;max&quot;], optional): The type of wanted optimization optimization. Defaults to "max".
             max_asset_weight (float, optional): The maximal weight of an asset in the portfolio. Defaults to 0.3.
             min_asset_weight (float, optional): The minimal weight of an asset in the portfolio. Defaults to 0.0.
-            trading_days (int, optional): The number of trading days in a year, 365 for cryptos, 252 for stocks. Defaults to 365.
-
         """
         assert way in [
             "min",
@@ -77,48 +228,37 @@ class ConvexPortfolio(ABCPortfolio):
             max_asset_weight >= min_asset_weight
         ), "Max asset weight must be greater or equal to min asset weight."
 
-        def compute_metrics(
-            weights: npt.NDArray,
-            get_all_metrics: bool = False,
-        ) -> float | dict[str, float | int]:  # Cost function
-            weights = np.array(weights)
-            ret = np.sum(self.__returns.mean() * weights * trading_days)
-            vol = np.sqrt(weights.T @ self.__returns.cov() * trading_days @ weights)
-            sr = ret / vol
-            metrics = {"sharpe": sr, "risk": vol, "return": ret}
-            if get_all_metrics:
-                return metrics
-            return (
-                -metrics.get(metric, 0.0) if way == "max" else metrics.get(metric, 0.0)
-            )
-
-        cons = tuple(
-            [
-                {
-                    "type": "eq",
-                    "fun": lambda weights: np.sum(weights) - 1,
-                },  # return 0 if sum of the weights is 1
-            ]
+        cons = (
+            {
+                "type": "eq",
+                "fun": lambda weights: np.sum(weights) - 1,
+            },  # return 0 if sum of the weights is 1
+            {"type": "ineq", "fun": lambda x: x},  # Long only
         )
 
         bounds = tuple(
             [
                 (min_asset_weight, max_asset_weight)
-                for _ in range(len(self.__returns.columns))
+                for _ in range(len(self._returns.columns))
             ]
         )
         init_guess = [
-            1 / len(self.__returns.columns) for _ in range(len(self.__returns.columns))
+            1 / len(self._returns.columns) for _ in range(len(self._returns.columns))
         ]
 
         opt_results = minimize(
-            compute_metrics, init_guess, method="SLSQP", bounds=bounds, constraints=cons
+            fun=self.__compute_objective_metrics,
+            x0=init_guess,
+            args=[metric, way],
+            method="SLSQP",
+            bounds=bounds,
+            constraints=cons,
+            tol=1e-10,
         )
-        self.__already_optimized = True
+
+        self._already_optimized = True
         self.__optimized_weights = opt_results.x
-        self.__optimized_metrics = compute_metrics(
-            self.__optimized_weights, get_all_metrics=True
-        )
+        self.__optimized_metrics = self._compute_metrics(self.__optimized_weights)
 
     def get_allocation(self) -> pd.DataFrame:
         """Plot the allocation of the portfolio and return a DataFrame with the allocation of each asset. This function can't be called before the fit method.
@@ -128,7 +268,7 @@ class ConvexPortfolio(ABCPortfolio):
             pd.DataFrame: The allocation of each asset in the portfolio, columns are the assets and rows are the weights.
         """
         assert (
-            self.__already_optimized
+            self._already_optimized
         ), "You must fit the model before getting the allocation."
 
         print(f"{'  Results  ':-^40}")
@@ -137,13 +277,13 @@ class ConvexPortfolio(ABCPortfolio):
             f"- Annualized Sharpe ratio: {self.__optimized_metrics.get('sharpe',0.0):.2f}\n- Annualized risk (volatility): {100*self.__optimized_metrics.get('risk',1.0):.2f} %\n- Annualized expected return: {100*self.__optimized_metrics.get('return',0.0):.2f} %"
         )
         ConvexPortfolio._plot_allocation(
-            self.__optimized_weights, self.__returns.columns
+            self.__optimized_weights, self._returns.columns
         )
         return pd.DataFrame(
             {
                 p: [w]
                 for p, w in zip(
-                    self.__returns.columns,
+                    self._returns.columns,
                     self.__optimized_weights,
                 )
             }
@@ -151,47 +291,47 @@ class ConvexPortfolio(ABCPortfolio):
 
 
 class MonteCarloPortfolio(ABCPortfolio):
-    def __init__(self, returns: pd.DataFrame):
-        self.__returns = returns
-        self.__already_optimized = False
-
-    def fit(
-        self, n_portfolios: int = 20000, trading_days: int = 365, plot: bool = True
-    ):
+    def fit(self, n_portfolios: int = 20000, plot: bool = True):
         """This method run a Monte Carlo simulation to allocate and create many portfolios in order to then find the most efficient. This method returns nothing.
 
         Args:
+        -----
             n_portfolios (int, optional): The number of portefolio to create. Defaults to 20000.
             trading_days (int, optional): The number of trading days in a year, 365 for cryptos, 252 for stocks. Defaults to 365.
             plot (bool, optional): Whether or not to plot the portfolios simulated on a chart, x-axis = risk, y-axis = return. Defaults to True.
         """
-        self.__all_weights = np.zeros((n_portfolios, len(self.__returns.columns)))
+        self.__all_weights = np.zeros((n_portfolios, len(self._returns.columns)))
         self.__ret_arr = np.zeros(n_portfolios)
         self.__vol_arr = np.zeros(n_portfolios)
         self.__sharpe_arr = np.zeros(n_portfolios)
 
-        cov_matrix = self.__returns.cov()
-        rets = self.__returns.mean()
-
         for x in tqdm(range(n_portfolios)):
             # Weights
             weights = np.array(
-                np.random.uniform(size=len(self.__returns.columns)), dtype=np.float64
+                np.random.uniform(size=len(self._returns.columns)), dtype=np.float64
             )
             weights = weights / np.sum(weights)
 
             # Save weights
             self.__all_weights[x, :] = weights
 
+            metrics = self._compute_metrics(weights)
+
             # Expected return
-            self.__ret_arr[x] = np.sum((rets * weights * trading_days))
+            self.__ret_arr[x] = metrics[
+                "return"
+            ]  # np.sum((rets * weights * self._trading_days))
 
             # Expected volatility
-            self.__vol_arr[x] = np.sqrt(weights.T @ cov_matrix * trading_days @ weights)
+            self.__vol_arr[x] = metrics[
+                "risk"
+            ]  # np.sqrt( weights.T @ cov_matrix * self._trading_days @ weights)
 
             # Sharpe Ratio
-            self.__sharpe_arr[x] = self.__ret_arr[x] / self.__vol_arr[x]
-        self.__already_optimized = True
+            self.__sharpe_arr[x] = metrics[
+                "sharpe"
+            ]  # self.__ret_arr[x] / self.__vol_arr[x]
+        self._already_optimized = True
 
         if plot:
             self.plot_portfolios(n_portfolios)
@@ -205,7 +345,7 @@ class MonteCarloPortfolio(ABCPortfolio):
 
         """
         assert (
-            self.__already_optimized
+            self._already_optimized
         ), "You must fit the model before getting the allocation."
         plt.figure(figsize=(12, 8))
         plt.title(
@@ -234,17 +374,20 @@ class MonteCarloPortfolio(ABCPortfolio):
         """Plot the allocation of the portfolio and return a DataFrame with the allocation of each asset. This function can't be called before the fit method.
 
         Args:
+        -----
             metric (Literal[&quot;sharpe&quot;, &quot;risk&quot;, &quot;return&quot;], optional): The metric to optimize. Defaults to "sharpe".
             way (Literal[&quot;min&quot;, &quot;max&quot;], optional): The type of wanted optimization optimization. Defaults to "max".
 
         Raises:
-            Exception: _description_
+        -------
+            Exception: Invalid metric chosen.
 
         Returns:
-            pd.DataFrame: _description_
+        --------
+            pd.DataFrame: The allocation of each asset in the portfolio, columns are the assets and rows are the weights.
         """
         assert (
-            self.__already_optimized
+            self._already_optimized
         ), "You must fit the model before getting the allocation."
         assert way in [
             "min",
@@ -274,13 +417,13 @@ class MonteCarloPortfolio(ABCPortfolio):
             f"- Annualized Sharpe ratio: {self.__sharpe_arr[ind]:.2f}\n- Annualized risk (volatility): {100*self.__vol_arr[ind]:.2f} %\n- Annualized expected return: {100*self.__ret_arr[ind]:.2f} %"
         )
         MonteCarloPortfolio._plot_allocation(
-            self.__all_weights[ind, :], self.__returns.columns
+            self.__all_weights[ind, :], self._returns.columns
         )
         return pd.DataFrame(
             {
                 p: [w]
                 for p, w in zip(
-                    self.__returns.columns,
+                    self._returns.columns,
                     self.__all_weights[ind, :],
                 )
             }
