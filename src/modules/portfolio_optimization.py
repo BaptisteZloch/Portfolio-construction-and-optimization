@@ -2,6 +2,7 @@ from typing import Iterable, Literal, Optional
 import pandas as pd
 import numpy as np
 import numpy.typing as npt
+import numpy.linalg as linalg
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from abc import ABC, abstractmethod
@@ -69,7 +70,13 @@ class ABCPortfolio(ABC):
             np.sqrt(weights.T @ self._returns_cov * self._trading_days @ weights)
         )
         sr = ret / vol
-        return {"sharpe": sr, "risk": vol, "return": ret}
+
+        co = pd.DataFrame(self._returns.values * weights).corr()
+        np.fill_diagonal(co.values, 1)
+        co.fillna(0, inplace=True)
+        div = float(linalg.norm(co - np.eye(co.shape[1]), ord="fro"))
+
+        return {"sharpe": sr, "risk": vol, "return": ret, "ptf_correlation": div}
 
 
 class RiskParityPortfolio(ABCPortfolio):
