@@ -1984,6 +1984,18 @@ packaging = "*"
 tenacity = ">=6.2.0"
 
 [[package]]
+name = "ply"
+version = "3.11"
+description = "Python Lex & Yacc"
+category = "main"
+optional = false
+python-versions = "*"
+files = [
+    {file = "ply-3.11-py2.py3-none-any.whl", hash = "sha256:096f9b8350b65ebd2fd1346b12452efe5b9607f7482813ffca50c22722a807ce"},
+    {file = "ply-3.11.tar.gz", hash = "sha256:00c7c1aaa88358b9c765b6d3000c6eec0ba42abca5351b095321aef446081da3"},
+]
+
+[[package]]
 name = "prompt-toolkit"
 version = "3.0.38"
 description = "Library for building powerful interactive command lines in Python"
@@ -2272,6 +2284,40 @@ gssapi = ["pykerberos"]
 ocsp = ["certifi", "pyopenssl (>=17.2.0)", "requests (<3.0.0)", "service-identity (>=18.1.0)"]
 snappy = ["python-snappy"]
 zstd = ["zstandard"]
+
+[[package]]
+name = "pyomo"
+version = "6.5.0"
+description = "Pyomo: Python Optimization Modeling Objects"
+category = "main"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "Pyomo-6.5.0-cp310-cp310-macosx_11_0_x86_64.whl", hash = "sha256:9c4b63e221f4018020ad80c66bf1dea28a249121a52728cbb2f0dce8dd44d29d"},
+    {file = "Pyomo-6.5.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d2a8fe8d576f501d52c63ff3d6a70844b154a289a985fbadda50bea76606df94"},
+    {file = "Pyomo-6.5.0-cp310-cp310-win_amd64.whl", hash = "sha256:72df6fd46e18a9f152556ef1515d347d15a46d35660d7c5c1372440e4e61ea8a"},
+    {file = "Pyomo-6.5.0-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:5eae96848c9568138234381d9856042ffd89548873bfa88fd180cf4ab3fdc060"},
+    {file = "Pyomo-6.5.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6544cb5bb9916aee7222cb66e5179c86baef52e1be2cc7ca0e5b97fc20cb1768"},
+    {file = "Pyomo-6.5.0-cp311-cp311-win_amd64.whl", hash = "sha256:518e986c435f7f15157f72819ecc0676a6c6f568178a359e56999b3be94998da"},
+    {file = "Pyomo-6.5.0-cp37-cp37m-macosx_10_15_x86_64.whl", hash = "sha256:08a2fedc40db8855a43eff8e6c4c8803cdf5d80f1b327c16cc590ed843ad3797"},
+    {file = "Pyomo-6.5.0-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:bb8947b2a183dccfaada3f192712e15b1f6cafa3565baf4ff8be590e297904a4"},
+    {file = "Pyomo-6.5.0-cp37-cp37m-win_amd64.whl", hash = "sha256:d90fc7c5444e0bbb617a788c32105082265a3803f718ef7f745477b51e9f7b5a"},
+    {file = "Pyomo-6.5.0-cp38-cp38-macosx_10_15_x86_64.whl", hash = "sha256:068a1ab45e5050f349d50ffa502e7013fe153aabac97bc094f19f3973be297d7"},
+    {file = "Pyomo-6.5.0-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f300acc614fa3450c85e5a6ea534b87bc6c17ce6f055515efba4fede7a0812b2"},
+    {file = "Pyomo-6.5.0-cp38-cp38-win_amd64.whl", hash = "sha256:938a69a1226445f7d81784b28245d1182146252276139a3bf4fdcbe1b932cca6"},
+    {file = "Pyomo-6.5.0-cp39-cp39-macosx_11_0_x86_64.whl", hash = "sha256:950a470633dceef2b104403f6e56e44ad897ea1423831ce9d7254de3a18c9810"},
+    {file = "Pyomo-6.5.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:65118a187ea067ce9fedf19ef61dba0dfd571744595b9d19e6c16e086187b120"},
+    {file = "Pyomo-6.5.0-cp39-cp39-win_amd64.whl", hash = "sha256:ed454fbfd691ea95af004d74776acf6d26f22b382ef412a3348e12e1e822834a"},
+    {file = "Pyomo-6.5.0.tar.gz", hash = "sha256:5a23e775bba9fdbad22698fa1a841e662482edc979f2dea41cc6c54b1bb4b968"},
+]
+
+[package.dependencies]
+ply = "*"
+
+[package.extras]
+docs = ["Sphinx (>2)", "numpy", "scipy", "sphinx-copybutton", "sphinx-rtd-theme (>0.5)", "sphinxcontrib-jsmath", "sphinxcontrib-napoleon"]
+optional = ["casadi", "dill", "ipython", "matplotlib (!=3.6.1)", "networkx", "numdifftools", "numpy", "openpyxl", "pandas", "pint", "plotly", "python-louvain", "pywin32", "pyyaml", "scipy", "seaborn", "sympy", "xlrd", "z3-solver"]
+tests = ["coverage", "parameterized", "pybind11", "pytest", "pytest-parallel"]
 
 [[package]]
 name = "pyparsing"
@@ -3383,4 +3429,4 @@ testing = ["coverage (>=5.0.3)", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.9,<3.11"
-content-hash = "9e4f1ce3e17b8a30327a5ab72cfba391e0913e8f7c06b93d863b9dd2116cf28d"
+content-hash = "d0838af1389eb5ed12f30dd796450abfe641c6045d77819828ac3d64e4080813"
