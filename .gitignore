@@ -5,6 +5,7 @@
 *.tflite
 *.npy
 data/*
+*/data
 *.log
 logs
 *Variables*
