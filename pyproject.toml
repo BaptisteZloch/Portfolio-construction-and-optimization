@@ -37,6 +37,7 @@ quant-invest-lab = "^0.2.8"
 alphalens = "^0.4.0"
 cvxsimulator = "^0.3.4"
 networkx = "^3.1"
+macrosynergy = "^0.0.34"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.1.0"

@@ -9,6 +9,7 @@ data/*
 *.log
 logs
 *Variables*
+*/simfin_data
 
 
 #official python gitignore
